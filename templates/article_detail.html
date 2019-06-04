@@ -1,0 +1,213 @@
+{% extends 'base.html' %}
+{% block page_main %}
+    {% csrf_token %}
+    <!--  文章列表 开始  -->
+    <div class="article-detail">
+        <h1>{{ article_obj.title }}</h1>
+        <p>{{ article_obj.articledetail.content|safe }}</p>
+    </div>
+    <!--  文章列表 结束  -->
+
+    <!--  文章点赞 开始  -->
+    <div class="poll clearfix">  <!--清除浮动，防止标签塌陷-->
+        <div id="div_digg">
+            <div class="diggit action">
+                <span class="diggnum" id="digg_count">{{ article_obj.up_count }}</span>
+            </div>
+            <div class="buryit action">
+                <span class="burynum" id="bury_count">{{ article_obj.down_count }}</span>
+            </div>
+            <div class="clear"></div>
+            <div class="diggword" id="digg_tips" style="color: red;"></div>
+        </div>
+    </div>
+
+    <!--  文章点赞 结束  -->
+
+
+{#    展示评论树#}
+    <div class="comment_tree"></div>
+
+
+
+    <!--  文章评论 开始  -->
+    <!--  评论列表 -->
+    <p>评论列表</p>
+    <ul class="comment_list list-group">
+        {% for comment in comment_list %}
+            <li class="list-group-item">
+                <div>
+                <a href=""> #{{ forloop.counter }}楼</a>&nbsp;&nbsp;
+                <span style="color: grey;">{{ comment.create_time|date:'Y-m-d H:m:s' }}</span>
+                <a href=""><span>{{ comment.user.username }}</span></a>
+                <a class="pull-right reply_btn" username="{{ comment.user.username }}" comment_pk="{{ comment.pk }}" >回复</a>
+                </div>
+                <!--  显示父评论 -->
+                {% if comment.parent_comment_id %}
+                    <div class="pid_info well">
+                    <p id="p_content_id" p_name="{{ comment.parent_comment.user.username }}" p_content="{{ comment.parent_comment}}">{{ comment.parent_comment.user.username}}&nbsp;&nbsp;{{ comment.parent_comment}}</p>
+                    </div>
+                {% endif %}
+                <div class="con">
+                    <p>{{ comment.content }}</p>
+                </div>
+            </li>
+        {% endfor %}
+    </ul>
+    <!--  写评论 -->
+    {% if request.user.username %}
+        <div id="comment_title">发表评论</div>
+        <div id="comment">
+            <p>昵称：<input disabled="disabled" class="author" id="tbCommentAuthor" type="text" size="50" value="{{ request.user.username }}">
+            </p>
+            <p class="commentbox_title_left">评论内容：</p>
+            <textarea class="comment_textarea" id="Comment_content"></textarea>
+            <p><button id="comment_btn">提交评论</button></p>
+        </div>
+    {% else %}
+        <a href="/login/">请登陆</a>
+    {% endif %}
+
+
+
+
+    <script>
+        //=======================文章点赞=======================================
+        //给两个图标绑定点击事件
+        $('.action').on('click', function () {
+            //判断点击的图标时赞还是踩
+            var is_up = $(this).hasClass('diggit');
+            //取到当前文章的id
+            var article_id = '{{ article_obj.pk }}';  // article_obj.title必须要加引号，不然会把他当成一个未赋值的变量而保存
+            $.ajax({
+                url: '/blog/up_down/',
+                type: 'get',
+                data: {
+                    is_up: is_up,
+                    article_id: article_id,
+                },
+                success: function (data) {
+                    if (data.status) {   //status==1  已经点击过，页面提示错误
+                        console.log(data);
+                        if (data.first_seclet) {
+                            $('#digg_tips').text('您已经推荐过')
+                        } else {
+                            $('#digg_tips').text('您已经反对过')
+                        }
+
+                        setTimeout(function () {   //设置提示信息显示的时间（单位毫秒）
+                            $('#digg_tips').text('')
+                        }, 1000)
+
+                    } else {     //status==0 点击成功，判断是点赞还是点踩，更新页面
+                        if (is_up) {   //点赞
+                            var c = $('#digg_count').text();
+                            c = parseInt(c) + 1
+                            $('#digg_count').text(c);
+                        } else {
+                            var c = $('#bury_count').text();
+                            c = parseInt(c) + 1
+                            $('#bury_count').text(c);
+                        }
+                    }
+                }
+            })
+        })
+    </script>
+
+    <script>
+            //===========================文章评论=========================
+            var pid ='';
+    $('#comment_btn').on('click',function () {
+        var article_id = '{{ article_obj.pk }}';
+        var content = $('#Comment_content').val();
+
+
+        if (pid) {  //pid有值，处理子评论
+            //去掉@用户 取出评论内容
+            var index = content.indexOf('\n');   //找到第一个换行符的索引
+            content = content.slice(index+1);
+
+        }
+        $.ajax({
+            url: '/blog/comment/',
+            type: 'post',
+            data: {
+                csrfmiddlewaretoken:$("[name='csrfmiddlewaretoken']").val(),
+                article_id:article_id,
+                content:content,
+                pid:pid,
+            },
+            success:(function (data) {
+
+                var create_time =data.create_time;
+                var username =data.username;
+                var content =data.content;
+                // 生成要 评论内容标签
+                var s ='<li class="list-group-item">' +
+                    '                <div>' +
+                    '                <span style="color: grey;">'+create_time+'</span>' +
+                    '                <a href=""><span>'+username+'</span></a>' +
+                    '                <a class="pull-right reply_btn" >删除</a>' +
+                    '                </div>' +
+                    '                <div class="con">' +
+                    '                    <p>'+content+'</p>' +
+                    '                </div>' +
+                    '            </li>';
+                //将标签添加到文档
+                $('.comment_list').append(s);
+                //清空评论框
+                 $('#Comment_content').val('')
+                //清空pid  (保证直接提交为根评论)
+                pid=''
+            })
+        })
+    });
+    //===========================评论按钮=========================
+    //给回复按钮绑定点击事件  ( 光标移到评论框，获取当前评论的id    pid)
+    $('.reply_btn').on('click',function () {
+        // 获取光标
+        $('#Comment_content').focus()
+        //@回复对象
+        $('#Comment_content').val('@'+$(this).attr('username')+'\n')
+        //获取当前评论的主键值，给pid赋值（区分为子评论）
+        pid = $(this).attr('comment_pk')
+
+    })
+
+
+{#=======================评论树=====================#}
+                         //   11
+                         //       44
+                         //           55
+                         //   22
+                         //   33
+    $.ajax({
+        url:'/blog/comment_tree/'+'{{ article_obj.pk }}/',
+        type: 'get',
+        data: {
+        },
+        success:function (data) {    //获取评论数据
+            $.each(data,function (index,comment_dict) {  //循环评论表，每次循环得到 index 和comment_dict  如：0: {pk: 49, content: "111", parent_comment_id: null}
+                  var s='<div class="comment_iterm" comment_id='+comment_dict.pk+'><span class="content">'+comment_dict.content+'</span></div>'
+
+                if(comment_dict.parent_comment_id){  //子评论
+                   // 找到他的父评论，添加进去
+                    var p_id= comment_dict.parent_comment_id;
+                    $("[comment_id="+p_id+"]").append(s);   //*****括号内必须使用双引号，否则无法识别
+                }else{  //根评论
+                    console.log(s)
+                    $('.comment_tree').append(s)
+                }
+            })
+        }
+    })
+
+
+    </script>
+
+
+
+
+{% endblock %}
+
